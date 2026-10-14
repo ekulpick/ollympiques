@@ -7,3 +7,5 @@ Rare offences, like plagiarism, are more frequent and are retracted earlier, sug
 Retractions appear to be more broadly distributed recently than in the past, where retractions were concentrated to a few offenders. 63.1% of retracted papers were written by authors with one retraction from 1993 to 2012, compared to 46% from 1972 to 1992 (p < 0.001). Authors with multiple retractions did not have a proportional increase.
 
 The rise in retractions reflects changes in both author and institutional behavior. Lower barriers to publication are evidenced by authors with a single retraction, while lower barriers to retraction are indicated by the shorter time-to-retraction and the expansion of retraction criteria. These findings demonstrate the importance of vigilance to maintain scientific integrity.
+
+WC:250
