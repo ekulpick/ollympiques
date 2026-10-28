@@ -1,0 +1,218 @@
+---
+title: "REM16 and FT1 expression by plant sex in Cannabis"
+output: html_document
+---
+
+## Purpose
+
+This script takes an RNA-seq expression table (genes in rows, samples in columns)
+and produces three box plots comparing female (XX) and male (XY) plants:
+
+1. REM16 expression by plant sex
+2. FT1 expression by plant sex
+3. REM16 and FT1 side by side, with sex clearly identified
+
+**How to run:** open this file in RStudio and click *Knit*, or run
+`rmarkdown::render("<path to this file>")` from R. See `README.md` for setup.
+
+**Inputs:** `Question_3/2_Data_RNASeq_Cannabis_Sex.csv` (already in the repo).
+
+**Outputs:** three PNG files written to the `figures/` folder at the repo root.
+
+## 1. Setup
+
+```{r setup, message=FALSE}
+# --- Check dependencies first ---------------------------------------------
+# Fail early with a clear, actionable message instead of a cryptic
+# "there is no package called ..." error halfway through the script.
+required_packages <- c("tidyverse", "here")
+missing_packages  <- required_packages[!required_packages %in% rownames(installed.packages())]
+
+if (length(missing_packages) > 0) {
+  stop(
+    "Missing R package(s): ", paste(missing_packages, collapse = ", "), ".\n",
+    "Install them once with: install.packages(c(",
+    paste0('"', missing_packages, '"', collapse = ", "), "))",
+    call. = FALSE
+  )
+}
+
+library(tidyverse)  # data wrangling (dplyr, tidyr, stringr) and plotting (ggplot2)
+library(here)       # builds file paths from the repo root, so no machine-specific paths
+```
+
+## 2. Settings (the only part you should ever need to edit)
+
+```{r settings}
+# Paths are built from the repo root with here(), so they work on any computer.
+input_file <- here("Question_3", "2_Data_RNASeq_Cannabis_Sex.csv")
+output_dir <- here("figures")
+
+# Genes to analyse: names are the labels used in plots, values are the
+# gene IDs exactly as written in the first column of the data file.
+# NOTE: REM16 is stored with a "Cannabis_" prefix in this dataset while FT1 is
+# not. We map the IDs here instead of renaming rows in the data, so the
+# inconsistency is documented in one visible place.
+target_genes <- c(
+  REM16 = "Cannabis_LOC115699937",
+  FT1   = "LOC115696989"
+)
+
+# Colour-blind-friendly colours (Okabe-Ito palette), one per plant sex.
+# Names must match the sex labels created in section 4.
+sex_colors <- c("Female (XX)" = "#D55E00", "Male (XY)" = "#0072B2")
+```
+
+## 3. Import and check the data
+
+```{r import}
+# Stop with a helpful message if the data file is missing, e.g. if the
+# script is run from a copy of the repo that lacks the data.
+if (!file.exists(input_file)) {
+  stop(
+    "Input file not found: ", input_file, "\n",
+    "Check that the repo was cloned completely and that the file is in ",
+    "the Question_3 folder.",
+    call. = FALSE
+  )
+}
+
+# The first column (gene IDs) has no header in the CSV, so read_csv() gives it
+# a placeholder name. We rename it by POSITION (column 1) to "gene_id".
+rnaseq_raw <- read_csv(input_file, show_col_types = FALSE) %>%
+  rename(gene_id = 1)
+
+# Assumption: every column other than gene_id is one sample, and its name
+# ends in "_XX" (female) or "_XY" (male). Warn if any column breaks that rule,
+# because those samples cannot be assigned a sex and will be excluded below.
+sample_columns <- setdiff(names(rnaseq_raw), "gene_id")
+unrecognised   <- sample_columns[!str_detect(sample_columns, "_(XX|XY)$")]
+
+if (length(unrecognised) > 0) {
+  warning(
+    "These columns do not end in _XX or _XY and will be excluded: ",
+    paste(unrecognised, collapse = ", "),
+    call. = FALSE
+  )
+}
+```
+
+## 4. Extract the target genes and reshape to long format
+
+```{r reshape}
+# Keep only the rows for our genes of interest.
+target_rows <- rnaseq_raw %>%
+  filter(gene_id %in% target_genes)
+
+# Each gene must appear exactly once. A missing gene (typo in the ID) or a
+# duplicated row would silently give wrong plots, so check explicitly.
+missing_genes <- setdiff(target_genes, target_rows$gene_id)
+if (length(missing_genes) > 0 || nrow(target_rows) != length(target_genes)) {
+  stop(
+    "Expected exactly one row for each of: ",
+    paste(target_genes, collapse = ", "), ".\n",
+    "Found ", nrow(target_rows), " row(s). Missing: ",
+    ifelse(length(missing_genes) == 0, "none (so an ID is duplicated)",
+           paste(missing_genes, collapse = ", ")),
+    call. = FALSE
+  )
+}
+
+# "Long" format = one row per gene per sample, which is what ggplot2 expects.
+expr_long <- target_rows %>%
+  # Swap the dataset's gene ID for the short label (REM16 / FT1) used in plots.
+  mutate(gene = names(target_genes)[match(gene_id, target_genes)]) %>%
+  select(-gene_id) %>%
+  pivot_longer(
+    cols      = -gene,           # every column except gene is a sample
+    names_to  = "sample_id",
+    values_to = "expression"
+  ) %>%
+  mutate(
+    # Plant sex is encoded in the sample name suffix.
+    sex = case_when(
+      str_ends(sample_id, "_XX") ~ "Female (XX)",
+      str_ends(sample_id, "_XY") ~ "Male (XY)"
+      # anything else becomes NA and is removed below
+    ),
+    # Fix the factor order so females always plot first, and keep genes in
+    # the order REM16, FT1 (factor() would otherwise sort alphabetically).
+    sex  = factor(sex,  levels = names(sex_colors)),
+    gene = factor(gene, levels = names(target_genes))
+  )
+
+# Data-quality step: drop samples with no recognised sex or a missing
+# expression value, and report how many were removed so nothing vanishes silently.
+n_before  <- nrow(expr_long)
+expr_long <- expr_long %>% filter(!is.na(sex), !is.na(expression))
+message("Removed ", n_before - nrow(expr_long), " of ", n_before,
+        " gene-by-sample values (unrecognised sex or missing expression).")
+
+# Final sanity check: print the sample size per gene and sex.
+expr_long %>% count(gene, sex)
+```
+
+## 5. Plots
+
+```{r plots}
+# REM16 and FT1 plots are identical except for the gene, so we define the plot
+# once as a function instead of copy-pasting the code.
+plot_gene_by_sex <- function(gene_name) {
+  expr_long %>%
+    filter(gene == gene_name) %>%
+    ggplot(aes(x = sex, y = expression, fill = sex)) +
+    # outlier.shape = NA hides the boxplot's own outlier dots because every
+    # sample is already drawn by geom_jitter below (avoids double-plotting).
+    geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+    geom_jitter(width = 0.15, size = 1.5, alpha = 0.6) +  # shows individual samples
+    scale_fill_manual(values = sex_colors) +
+    labs(title = paste(gene_name, "expression by plant sex"),
+         x = "Plant sex", y = "Expression") +
+    theme_minimal() +
+    theme(legend.position = "none")  # x-axis already labels the sexes
+}
+
+p_rem16 <- plot_gene_by_sex("REM16")
+p_ft1   <- plot_gene_by_sex("FT1")
+
+# Combined plot: genes on the x-axis, sexes side by side within each gene.
+# position_dodge / position_jitterdodge use the same dodge.width so the
+# jittered points line up with their boxes.
+p_combined <- ggplot(expr_long, aes(x = gene, y = expression, fill = sex)) +
+  geom_boxplot(position = position_dodge(width = 0.8),
+               outlier.shape = NA, alpha = 0.7) +
+  geom_point(
+    position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8),
+    size = 1.5, alpha = 0.6
+  ) +
+  scale_fill_manual(values = sex_colors, name = "Plant sex") +
+  labs(title = "REM16 and FT1 expression by plant sex",
+       x = "Gene", y = "Expression") +
+  theme_minimal()
+
+p_rem16
+p_ft1
+p_combined
+```
+
+## 6. Save figures
+
+```{r save}
+# recursive = TRUE creates parent folders if needed; showWarnings = FALSE
+# keeps quiet when the folder already exists (git does not track empty folders,
+# so it will not exist in a fresh clone).
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+ggsave(file.path(output_dir, "rem16_by_sex.png"),    p_rem16,    width = 4, height = 4, dpi = 300)
+ggsave(file.path(output_dir, "ft1_by_sex.png"),      p_ft1,      width = 4, height = 4, dpi = 300)
+ggsave(file.path(output_dir, "combined_by_sex.png"), p_combined, width = 6, height = 4, dpi = 300)
+
+message("Figures saved to: ", output_dir)
+```
+
+## 7. Session information
+
+```{r session-info}
+# Records R and package versions so results can be reproduced.
+sessionInfo()
+```
