@@ -1,0 +1,94 @@
+```{r}
+
+library(tidyverse)
+```
+
+```{r}
+# Import dataset and insert missing column name for 1st column
+
+RNASeqRaw <- read_csv("/Users/luke/bvg7003/oLLMpiques/Question_3/2_Data_RNASeq_Cannabis_Sex.csv") %>%
+  rename(gene_id = 1)
+
+```
+
+```{r}
+#Give first column a name
+RNASeq <- RNASeqRaw %>% rename(Locus = ...1)
+```
+
+```{r}
+#filter to REM16 and FT1
+REM16RNASeq <- filter(RNASeqRaw, gene_id == "Cannabis_LOC115699937")
+#REM16 had a different name but easier to call differently than rename
+FT1RNASeq   <- filter(RNASeqRaw, gene_id == "LOC115696989")
+```
+
+```{r}
+expr_long <- bind_rows(REM16 = REM16RNASeq, FT1 = FT1RNASeq, .id = "gene") %>%
+  select(-gene_id) %>%
+  pivot_longer(
+    cols      = -gene,
+    names_to  = "sample_id",
+    values_to = "expression"
+  ) %>%
+  mutate(
+    sex = case_when(
+      str_ends(sample_id, "_XX") ~ "Female (XX)",
+      str_ends(sample_id, "_XY") ~ "Male (XY)"
+    ),
+    sex = factor(sex, levels = c("Female (XX)", "Male (XY)"))
+  ) %>%
+  drop_na(expression)
+```
+
+```{r}
+sex_colors <- c("Female (XX)" = "#D55E00", "Male (XY)" = "#0072B2")
+```
+
+```{r}
+p_rem16 <- expr_long %>%
+  filter(gene == "REM16") %>%
+  ggplot(aes(x = sex, y = expression, fill = sex)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+  geom_jitter(width = 0.15, size = 1.5, alpha = 0.6) +
+  scale_fill_manual(values = sex_colors) +
+  labs(title = "REM16 expression by plant sex", x = "Plant sex", y = "Expression") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+p_rem16
+```
+
+```{r}
+p_ft1 <- expr_long %>%
+  filter(gene == "FT1") %>%
+  ggplot(aes(x = sex, y = expression, fill = sex)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+  geom_jitter(width = 0.15, size = 1.5, alpha = 0.6) +
+  scale_fill_manual(values = sex_colors) +
+  labs(title = "FT1 expression by plant sex", x = "Plant sex", y = "Expression") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+p_ft1
+```
+
+```{r}
+p_combined <- ggplot(expr_long, aes(x = gene, y = expression, fill = sex)) +
+  geom_boxplot(position = position_dodge(width = 0.8), outlier.shape = NA, alpha = 0.7) +
+  geom_point(
+    position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8),
+    size = 1.5, alpha = 0.6
+  ) +
+  scale_fill_manual(values = sex_colors, name = "Plant sex") +
+  labs(title = "REM16 and FT1 expression by plant sex", x = "Gene", y = "Expression") +
+  theme_minimal()
+
+p_combined
+```
+
+```{r}
+ggsave("rem16_by_sex.png",    p_rem16,    width = 4, height = 4, dpi = 300)
+ggsave("ft1_by_sex.png",      p_ft1,      width = 4, height = 4, dpi = 300)
+ggsave("combined_by_sex.png", p_combined, width = 6, height = 4, dpi = 300)
+```
