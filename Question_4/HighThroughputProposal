@@ -1,0 +1,19 @@
+# High-throughput sex determination in cannabis using REM16 and FT1
+
+**Rationale.** Task 3 showed that REM16 and FT1 expression differs between XX and XY plants. Using both markers lets each confirm the other, reducing misclassification.
+
+**Sample collection and processing**
+1. Collect a ~20 mg leaf disc from each seedling at 2-3 weeks, long before flowering, and place it in a barcoded 96-well plate with RNA stabilizer.
+2. Homogenize by bead-beating and extract RNA with a magnetic-bead, plate-based kit, including DNase treatment.
+3. Synthesize cDNA in plates.
+
+**Determining sex**
+1. Run RT-qPCR for REM16, FT1 and a stable reference gene, with known XX and XY controls on every plate.
+2. Calculate delta-Ct (marker minus reference) for each gene.
+3. Classify each plant using thresholds derived from the Task 3 distributions of known-sex samples (e.g. logistic regression on both markers).
+4. Flag samples where the markers disagree or fall near the threshold for retesting.
+
+**Scaling up**
+- Use 384-well plates, liquid-handling robots and a LIMS linked to plate barcodes, giving hundreds to thousands of samples per day.
+- For tens of thousands of samples, switch to multiplexed amplicon RNA-seq with sample barcodes, pooled into one sequencing run.
+- Before deployment, validate accuracy, sensitivity and specificity on an independent cohort of known-sex plants, and re-calibrate thresholds for each batch using the plate controls.
